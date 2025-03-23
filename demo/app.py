@@ -5,6 +5,7 @@ import argparse
 import matplotlib.pyplot as plt
 import subprocess
 import sys
+import shutil
 
 from flask import Flask, jsonify, request, session, Response
 from flask_cors import CORS
@@ -12,52 +13,12 @@ from flask_cors import CORS
 from DcmCase import Case,RegistrationError
 
 
-# ---------------------------------------------------------------------------- #
-# run model
-# ---------------------------------------------------------------------------- #
-
-# radnec segmenation by nnUNet
-# def segment(self,dpath=None):
-#     print('segment tumour')
-#     if dpath is None:
-#         dpath = os.path.join(self.localstudydir,'nnunet')
-#         if not os.path.exists(dpath):
-#             os.mkdir(dpath)
-#     for dt,suffix in zip(['t1+','flair'],['0000','0003']):
-#         if os.name == 'posix':
-#             l1str = 'ln -s ' + os.path.join(self.localstudydir,dt+'_processed.nii.gz') + ' '
-#             l1str += os.path.join(dpath,self.studytimeattrs['StudyDate']+'_'+suffix+'.nii.gz')
-#         elif os.name == 'nt':
-#             l1str = 'copy  \"' + os.path.join(self.localstudydir,dt+'_processed.nii.gz') + '\" \"'
-#             l1str += os.path.join(dpath,os.path.join(dpath,self.studytimeattrs['StudyDate']+'_'+suffix+'.nii.gz')) + '\"'
-#         os.system(l1str)
-
-#     command = 'conda run -n ptorch nnUNetv2_predict '
-#     command += ' -i ' + dpath
-#     command += ' -o ' + dpath
-#     command += ' -d137 -c 3d_fullres'
-#     res = os.system(command)
-            
-#     sfile = self.studytimeattrs['StudyDate'] + '.nii.gz'
-#     segmentation,affine = self.loadnifti(sfile,dpath)
-#     ET = np.zeros_like(segmentation)
-#     ET[segmentation == 3] = 1
-#     WT = np.zeros_like(segmentation)
-#     WT[segmentation > 0] = 1
-#     self.writenifti(ET,os.path.join(self.localstudydir,'ET.nii'),affine=affine)
-#     self.writenifti(WT,os.path.join(self.localstudydir,'WT.nii'),affine=affine)
-#     if False:
-#         os.remove(os.path.join(dpath,sfile))
-
-#     return 
-
-# main
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="localhost")
 parser.add_argument("--port", type=int, default=5000)
 parser.add_argument("--checkpoint", type=str, default="/media/jbishop/WD4/brainmets/sam_models/psam")
 parser.add_argument("--uploaddir", type=str, default="/media/jbishop/WD4/brainmets/sunnybrook/radnec2/dicom_upload")
+parser.add_argument("--downloaddir", type=str, default="/home/jbishop/Downloads")
 parser.add_argument("--niftidir", type=str, default="/media/jbishop/WD4/brainmets/sunnybrook/radnec2/dicom2nifti_upload")
 parser.add_argument("--datadir", type=str, default="/media/jbishop/WD4/brainmets/sunnybrook/radnec2/")
 
@@ -81,17 +42,23 @@ app.secret_key = 'test'
 def index():
     return app.send_static_file("index.html")
 
-# @app.route("/static/<path:path>")
-# def static_server(path):
-    # return app.send_static_file(path)
 
-# @app.route('/get_filename')
-# def get_filename():
-#     filename = session.get('filename')  # Retrieve filename from session
-#     if filename:
-#         return jsonify({"filename": filename})
-#     return jsonify({"message": "No file uploaded yet"}), 404
+@app.route('/upload_dicom', methods=['POST'])
+def upload_dicom():
+    # data = request.get_json()
+    file = request.files['file']
+    filename = file.filename
+    # filename = data.get('filename')
 
+    if not filename:
+        return jsonify({"message": "No filename received"}), 400
+
+    session['filename'] = filename
+    # save the upload
+    file_path = os.path.join(args.uploaddir, filename)
+    file.save(file_path)
+
+    return jsonify({"message": f"upload complete with file: {filename}"}),200
 
 @app.route('/preprocess', methods=['GET','POST'])
 def preprocess():
@@ -132,22 +99,7 @@ def preprocess():
     # return jsonify({"message": f"preprocess complete with file: {filename}"})
     return Response(generate(), mimetype="text/plain")
 
-@app.route('/upload_dicom', methods=['POST'])
-def upload_dicom():
-    # data = request.get_json()
-    file = request.files['file']
-    filename = file.filename
-    # filename = data.get('filename')
 
-    if not filename:
-        return jsonify({"message": "No filename received"}), 400
-
-    session['filename'] = filename
-    # save the upload
-    file_path = os.path.join(args.uploaddir, filename)
-    file.save(file_path)
-
-    return jsonify({"message": f"upload complete with file: {filename}"}),200
 
 @app.route("/run", methods=['GET','POST'])
 def run():
@@ -186,7 +138,6 @@ def run():
 
 @app.route('/postprocess', methods=['GET','POST'])
 def postprocess():
-
     data = request.get_json()
     filename = data.get('filename', None)
     if not filename:
@@ -196,11 +147,14 @@ def postprocess():
         filename = request.args.get('filename')
         if not filename:
             filename = session.get('filename')
-
             if not filename:
                 return jsonify({"error": "No filename received"}), 400
         
     c = filename.split('.')[0]
+    output_zip = os.path.join(args.datadir, 'nnUNet_predictions', 'flask', f'{c}_inference.zip')
+    
+    # Save the output path in session
+    session['output_zip'] = output_zip
 
     result = subprocess.Popen(["python","-m","nnunet2d_predict_postprocess"],
                                 stdout=subprocess.PIPE,
@@ -209,7 +163,26 @@ def postprocess():
     result.wait()
 
     return jsonify({"message": f"postprocess complete with case: {c}"})
-    # return Response(generate(), mimetype="text/plain")
+
+@app.route('/download', methods=['POST'])
+def download_inference():
+    # Get the output zip path from session
+    output_zip = session.get('output_zip')
+    if not output_zip:
+        return jsonify({"error": "No output file found"}), 404
+
+    if not os.path.exists(output_zip):
+        return jsonify({"error": "Output file not found"}), 404
+
+    # Get the filename from the path
+    filename = os.path.basename(output_zip)
+
+    # Copy the file to the download directory
+    download_path = os.path.join(args.downloaddir, filename)
+    shutil.copy2(output_zip, download_path)
+
+    return jsonify({"message": f"Downloaded: {filename}"}), 200
+
 
 if __name__ == "__main__":
 

@@ -26,6 +26,7 @@
         </div> -->
     </div>
     <div id="main">
+        <h3>RADNEC Inference App Demo</h3>
         <label for="fileInput">Select Dicom ZipFile:</label>
         <input type="file" id="fileInput">
         <p id="fileName"></p>
@@ -184,9 +185,35 @@
             }
         </script>
 
-        <button id="download">Download Result</button>
+        <button onclick="download()" id="download">Download Result</button>
         <p></p>
+        <p id="response5"></p>
 
+        <script>
+            function download() {
+
+            let fileInput = document.getElementById("fileInput");
+            if (fileInput.files.length === 0) {
+                alert("Please select a file first.");
+                return;
+            }
+            let filename = encodeURIComponent(fileInput.files[0].name); // Encode for URL safety
+
+            // Send a POST request with the filename to the Flask route
+            fetch('/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename: filename })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById("response5").innerText = data.message;
+            })
+            .catch(error => console.error('Error:', error))
+            }
+        </script>
 
         </div>
     </div>

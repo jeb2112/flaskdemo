@@ -140,11 +140,17 @@ def main(datadir):
                 output_fname = os.path.join(resultsdir,'pred_' + case + '_' + s + '_1_compOR.nii')
                 writenifti(pred_3d['compOR'],output_fname,affine=affine)
 
+    # create download zip file
+    # currently not separated if multiple cases, just named for last case processed
+    command = 'zip -r -j ' + os.path.join(predictiondir,case+'_inference.zip') +  ' {}'.format(os.path.join(predictiondir,'comp','*'))
+    os.system(command)
+    return
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--uploaddir", type=str, default="/media/jbishop/WD4/brainmets/sunnybrook/radnec2/dicom_upload")
     parser.add_argument("--niftidir", type=str, default="/media/jbishop/WD4/brainmets/sunnybrook/radnec2/dicom2nifti_upload")
     parser.add_argument("--datadir", type=str, default="/media/jbishop/WD4/brainmets/sunnybrook/radnec2/") 
-
     args, unknown_args = parser.parse_known_args()
     main(args.datadir)
