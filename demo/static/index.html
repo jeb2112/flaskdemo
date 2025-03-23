@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RADNEC Inference App Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- <script type="importmap"> 
+        { 
+            "imports": { 
+                "three": "https://unpkg.com/three@0.162.0/build/three.module.js", 
+                "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/" 
+             } 
+        } 
+    </script> -->
+</head>
+
+<body>
+<div id="container">
+    <div id="sidebar">
+        <!-- <div id="tool-box">
+            <button id="annotate-positive">Positive Prompt</button>
+            <button id="annotate-negative">Negative Prompt</button>
+            <button id="annotate-next">Next Mask</button>
+            <button id="save-result">Save Annotation</button>
+            <button id="clear-result">Clear Annotation</button>
+        </div> -->
+    </div>
+    <div id="main">
+        <label for="fileInput">Select Dicom ZipFile:</label>
+        <input type="file" id="fileInput">
+        <p id="fileName"></p>
+        
+        <script>
+          document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            // if (file) {
+            //   document.getElementById('fileName').innerText = `Selected file: ${file.name}`;
+            // }
+          });
+        </script>
+        
+
+        <button onclick="upload()" id="upload">Upload</button>
+        <p id="response"></p>
+        <script>
+            function upload() {
+                let fileInput = document.getElementById("fileInput");
+                if (fileInput.files.length === 0) {
+                    alert("Please select a file first.");
+                    return;
+                }
+    
+                let filename = fileInput.files[0].name;
+                let formData = new FormData();
+                formData.append("file", fileInput.files[0]);
+
+                fetch('/upload_dicom', {
+                    method: 'POST',
+                    // headers: { 'Content-Type': 'application/json' },
+                    // body: JSON.stringify({ filename: filename })
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("response").innerText = data.message;
+                })
+                .catch(error => console.error('Error:', error));
+            }
+        </script>
+
+
+        <button onclick="preprocess()" id="pre_process">Preprocess</button>
+        <p></p>
+        <p id="response2"></p>
+
+        <script>
+            function preprocess() {
+
+            let fileInput = document.getElementById("fileInput");
+            if (fileInput.files.length === 0) {
+                alert("Please select a file first.");
+                return;
+            }
+            let filename = encodeURIComponent(fileInput.files[0].name); // Encode for URL safety
+
+            // Send a POST request with the filename to the Flask route
+            fetch('/preprocess', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename: filename })
+            })
+            .then(response => response.body)
+            .then(stream => {
+                const reader = stream.getReader();
+                const decoder = new TextDecoder();
+
+                function processText({ done, value }) {
+                    if (done) return;
+                    console.log(decoder.decode(value)); // Log each line as it arrives
+                    reader.read().then(processText);
+                }
+                reader.read().then(processText);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('response').innerText = "An error occurred.";
+            });
+
+            }
+        </script>
+
+
+        <button onclick=run() id="run">Run Inference</button>
+        <p></p>
+        <p id="response3"></p>
+        <script>
+            function run() {
+
+                let fileInput = document.getElementById("fileInput");
+                if (fileInput.files.length === 0) {
+                    alert("Please select a file first.");
+                    return;
+                }
+                let filename = encodeURIComponent(fileInput.files[0].name); // Encode for URL safety
+
+                fetch(`/run?filename=${filename}`, {
+                    method: 'GET',
+                })
+                .then(response => response.body)
+                .then(stream => {
+                    const reader = stream.getReader();
+                    const decoder = new TextDecoder();
+
+                    function processText({ done, value }) {
+                        if (done) return;
+                        console.log(decoder.decode(value)); // Log each line as it arrives
+                        reader.read().then(processText);
+                    }
+                    reader.read().then(processText);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('response').innerText = "An error occurred.";
+                });
+
+                // .then(response => response.json())
+                // .then(data => {
+                //     document.getElementById("response").innerText = data.message;
+                // })
+                // .catch(error => console.error('Error:', error));
+            }
+        </script>
+
+
+        <button onclick="postprocess()" id="post_process">Postprocess</button>
+        <p></p>
+        <p id="response4"></p>
+
+        <script>
+            function postprocess() {
+
+            let fileInput = document.getElementById("fileInput");
+            if (fileInput.files.length === 0) {
+                alert("Please select a file first.");
+                return;
+            }
+            let filename = encodeURIComponent(fileInput.files[0].name); // Encode for URL safety
+
+            // Send a POST request with the filename to the Flask route
+            fetch('/postprocess', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename: filename })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById("response4").innerText = data.message;
+            })
+            .catch(error => console.error('Error:', error))
+            }
+        </script>
+
+        <button id="download">Download Result</button>
+        <p></p>
+
+
+        </div>
+    </div>
+</div>
+<!-- <script type="module">
+    function test() {
+        console.log("test");
+    }
+</script>
+
+</body>
+
+</html>
