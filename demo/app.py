@@ -4,6 +4,7 @@ import numpy as np
 import argparse
 import matplotlib.pyplot as plt
 import subprocess
+import sys
 
 from flask import Flask, jsonify, request, session, Response
 from flask_cors import CORS
@@ -150,33 +151,37 @@ def upload_dicom():
 
 @app.route("/run", methods=['GET','POST'])
 def run():
-
     filename = request.args.get('filename')
     if not filename:
         filename = session.get('filename')
-
         if not filename:
             return jsonify({"error": "No filename received"}), 400
 
     case = filename.split('.')[0]
 
-    def generate_stdout():
-        result = subprocess.Popen(["python","-m","nnunet2d_predict_wrapper"],
-                                  stdout=subprocess.PIPE,
-                                  stderr=subprocess.STDOUT,
-                                  text=True,
-                                  bufsize=1)
-        for line in iter(result.stdout.readline,""):
-            print(line,end="")
-            result.stdout.flush()
+    def generate():
+        process = subprocess.Popen(
+            [sys.executable, "-m", "nnunet2d_predict_wrapper"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        
+        # Read and yield output in real-time
+        for line in iter(process.stdout.readline, ""):
+            print(line, end='', flush=True)
             yield line.strip() + '\n'
-        result.stdout.close()
-        result.wait()
+            
+        process.stdout.close()
+        process.wait()
+        
+        if process.returncode != 0:
+            yield f"Process exited with code {process.returncode}\n"
+        else:
+            yield "Process completed successfully\n"
 
-    # result = subprocess.run(["python","-m","nnUNetv2_predict_wrapper"],shell=False,capture_output=False,text=True)
-
-    # return jsonify({"message": f"inference complete with case: {case}"})
-    return Response(generate_stdout(), mimetype="text/plain")
+    return Response(generate(), mimetype='text/plain')
 
 
 @app.route('/postprocess', methods=['GET','POST'])

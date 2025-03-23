@@ -8,6 +8,7 @@ import argparse
 import nibabel as nb
 import shutil
 import subprocess
+import sys
 
 def main(datadir,env,dataset,model):
     inputdir = os.path.join(datadir,'nnUNet_raw','flask','imagesTs')
@@ -18,22 +19,29 @@ def main(datadir,env,dataset,model):
     except FileNotFoundError:
         pass
     os.makedirs(outputdir,exist_ok=True)
-    # condapath = os.system('which conda')
-    cmd = f"conda run -n {env} nnUNetv2_predict -i {inputdir} -o {outputdir} -d {dataset} -c {model}"
-
-    process = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
     
-    for line in iter(process.stdout.readline,""):
-        print(line, end="")  # Print without adding extra newline    
-    #     yield line
-    process.stdout.close()
-    process.wait()
-
-    stderr = process.stderr.read()
-    if stderr:
-        print(f"Error: {stderr}")
     
-    print(f"Process completed for model {model}.")
+    # Use os.system which will show output directly in terminal
+    # Set PYTHONUNBUFFERED to ensure no buffering
+    os.environ['PYTHONUNBUFFERED'] = '1'
+    if False:
+        cmd = f"conda run -n {env} nnUNetv2_predict -i {inputdir} -o {outputdir} -d {dataset} -c {model}"
+        return_code = os.system(cmd)
+        if return_code != 0:
+            print(f"Process exited with code {return_code}", file=sys.stderr, flush=True)
+    else:
+        cmd = ["nnUNetv2_predict", "-i", inputdir, "-o", outputdir, "-d", dataset, "-c", model]
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+
+        # Stream output line by line
+        for line in iter(process.stdout.readline, ""):
+            print(line, end='', flush=True)  # Ensures real-time output in terminal
+
+        process.stdout.close()
+        process.wait()
+    
+    
+    print(f"Process completed for model {model}.", file=sys.stderr, flush=True)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
