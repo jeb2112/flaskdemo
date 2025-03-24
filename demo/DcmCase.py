@@ -64,12 +64,12 @@ class Case():
         self.dir = {}
         self.dir['data'] = datadir
         self.dir['nifti'] = niftidir
+        self.dir['flask_nifti'] = None
         self.dir['upload'] = uploaddir
         self.casedir = os.path.join(self.dir['upload'],self.case)
         self.casedir_prefix = ('M','DSC') # list of simple conventions to identify root dir of a case
 
-        if False:
-            self.unzip()
+        self.unzip()
 
         _,dcmdirs = self.get_imagedirs()
         dcmdirs = self.group_dcmdirs(dcmdirs)
@@ -335,9 +335,9 @@ class Case():
             affine = self.studies[0].dset['ref']['affine']
         for s in self.studies:
             localstudydir = os.path.join(self.dir['data'],self.case,s.studytimeattrs['StudyDate'])
-            localniftidir = os.path.join(self.dir['nifti'],self.case,s.studytimeattrs['StudyDate'])
-            if not os.path.exists(localniftidir):
-                os.makedirs(localniftidir,exist_ok=True)
+            self.dir['flask_nifti'] = os.path.join(self.dir['nifti'],self.case,s.studytimeattrs['StudyDate'])
+            if not os.path.exists(self.dir['flask_nifti']):
+                os.makedirs(self.dir['flask_nifti'],exist_ok=True)
             for dc in ['raw','z','cbv','adc']:
                 for dt in list(s.channels.values()):
                     if s.dset[dc][dt]['ex']:
@@ -347,7 +347,7 @@ class Case():
                             dstr = 'z' + dt + '_processed.nii'
                         else:
                             dstr = dt+'_processed.nii'
-                        s.writenifti(s.dset[dc][dt]['d'],os.path.join(localniftidir,dstr),
+                        s.writenifti(s.dset[dc][dt]['d'],os.path.join(self.dir['flask_nifti'],dstr),
                                                     type='float',affine=affine)
         print('Case {} nifti files written'.format(self.case))
 

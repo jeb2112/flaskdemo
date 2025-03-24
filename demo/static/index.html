@@ -70,48 +70,6 @@
         </script>
 
 
-        <button onclick="preprocess()" id="pre_process">Preprocess</button>
-        <p></p>
-        <p id="response2"></p>
-
-        <script>
-            function preprocess() {
-
-            let fileInput = document.getElementById("fileInput");
-            if (fileInput.files.length === 0) {
-                alert("Please select a file first.");
-                return;
-            }
-            let filename = encodeURIComponent(fileInput.files[0].name); // Encode for URL safety
-
-            // Send a POST request with the filename to the Flask route
-            fetch('/preprocess', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ filename: filename })
-            })
-            .then(response => response.body)
-            .then(stream => {
-                const reader = stream.getReader();
-                const decoder = new TextDecoder();
-
-                function processText({ done, value }) {
-                    if (done) return;
-                    console.log(decoder.decode(value)); // Log each line as it arrives
-                    reader.read().then(processText);
-                }
-                reader.read().then(processText);
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                document.getElementById('response').innerText = "An error occurred.";
-            });
-
-            }
-        </script>
-
 
         <button onclick=run() id="run">Run Inference</button>
         <p></p>
@@ -155,35 +113,6 @@
         </script>
 
 
-        <button onclick="postprocess()" id="post_process">Postprocess</button>
-        <p></p>
-        <p id="response4"></p>
-
-        <script>
-            function postprocess() {
-
-            let fileInput = document.getElementById("fileInput");
-            if (fileInput.files.length === 0) {
-                alert("Please select a file first.");
-                return;
-            }
-            let filename = encodeURIComponent(fileInput.files[0].name); // Encode for URL safety
-
-            // Send a POST request with the filename to the Flask route
-            fetch('/postprocess', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ filename: filename })
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById("response4").innerText = data.message;
-            })
-            .catch(error => console.error('Error:', error))
-            }
-        </script>
 
         <button onclick="download()" id="download">Download Result</button>
         <p></p>

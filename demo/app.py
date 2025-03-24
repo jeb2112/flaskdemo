@@ -110,59 +110,112 @@ def run():
             return jsonify({"error": "No filename received"}), 400
 
     case = filename.split('.')[0]
-
+    output_zip = os.path.join(args.datadir, 'nnUNet_predictions', 'flask', f'{case}_inference.zip')
+    
+    # Store necessary data before starting subprocesses
+    session['output_zip'] = output_zip
+    
     def generate():
-        process = subprocess.Popen(
-            [sys.executable, "-m", "nnunet2d_predict_wrapper"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
-        )
-        
-        # Read and yield output in real-time
-        for line in iter(process.stdout.readline, ""):
-            print(line, end='', flush=True)
-            yield line.strip() + '\n'
+        try:
+            # First do the Case instantiation
+            yield "Initializing case...\n"
+            try:
+                case_obj = Case(case, args.uploaddir, args.niftidir, args.datadir)
+                yield "Case initialized successfully\n"
+            except RegistrationError:
+                yield f"Registration failure, case {case}\n"
+                return
             
-        process.stdout.close()
-        process.wait()
-        
-        if process.returncode != 0:
-            yield f"Process exited with code {process.returncode}\n"
-        else:
-            yield "Process completed successfully\n"
+            # Then run preprocessing
+            yield "Starting preprocessing...\n"
+            preprocess = subprocess.Popen(
+                [sys.executable, "-m", "nnunet2d_predict_preprocess"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            
+            # Read and yield preprocessing output
+            for line in iter(preprocess.stdout.readline, ""):
+                print(line, end='', flush=True)
+                yield line.strip() + '\n'
+                
+            preprocess.stdout.close()
+            preprocess.wait()
+            
+            if preprocess.returncode != 0:
+                yield f"Preprocessing exited with code {preprocess.returncode}\n"
+                return
+                
+            yield "Preprocessing completed successfully\n"
+            
+            # Then run the nnUNet process
+            yield "Starting nnUNet process...\n"
+            process = subprocess.Popen(
+                [sys.executable, "-m", "nnunet2d_predict_wrapper"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            
+            # Read and yield output in real-time
+            for line in iter(process.stdout.readline, ""):
+                print(line, end='', flush=True)
+                yield line.strip() + '\n'
+                
+            process.stdout.close()
+            process.wait()
+            
+            if process.returncode != 0:
+                yield f"Process exited with code {process.returncode}\n"
+                return
+                
+            yield "nnUNet process completed successfully\n"
+            
+            # Finally run postprocessing
+            yield "Starting postprocessing...\n"
+            postprocess_cmd = [
+                "python", "nnunet2d_predict_postprocess.py",
+                "--datadir", args.datadir
+            ]
+            postprocess_process = subprocess.Popen(
+                postprocess_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1
+            )
+            
+            while True:
+                line = postprocess_process.stdout.readline()
+                if not line and postprocess_process.poll() is not None:
+                    break
+                if line:
+                    yield line
+                    sys.stdout.flush()
+            
+            postprocess_process.stdout.close()
+            postprocess_process.wait()
+            
+            if postprocess_process.returncode != 0:
+                stderr = postprocess_process.stderr.read()
+                yield f"Error in postprocessing: {stderr}\n"
+                return
+            
+            yield "Postprocessing completed successfully.\n"
+            sys.stdout.flush()
+            yield f"Output file ready for download: {os.path.basename(output_zip)}\n"
+            sys.stdout.flush()
+                
+        except Exception as e:
+            yield f"Error during processing: {str(e)}\n"
+            raise
 
     return Response(generate(), mimetype='text/plain')
 
 
-@app.route('/postprocess', methods=['GET','POST'])
-def postprocess():
-    data = request.get_json()
-    filename = data.get('filename', None)
-    if not filename:
-        return jsonify({"error": "No filename received"}), 400
-    
-    if False: # if using query_string and GET
-        filename = request.args.get('filename')
-        if not filename:
-            filename = session.get('filename')
-            if not filename:
-                return jsonify({"error": "No filename received"}), 400
-        
-    c = filename.split('.')[0]
-    output_zip = os.path.join(args.datadir, 'nnUNet_predictions', 'flask', f'{c}_inference.zip')
-    
-    # Save the output path in session
-    session['output_zip'] = output_zip
-
-    result = subprocess.Popen(["python","-m","nnunet2d_predict_postprocess"],
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                text=True)
-    result.wait()
-
-    return jsonify({"message": f"postprocess complete with case: {c}"})
 
 @app.route('/download', methods=['POST'])
 def download_inference():

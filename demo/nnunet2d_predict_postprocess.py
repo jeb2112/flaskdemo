@@ -9,7 +9,6 @@ import re
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from scipy.spatial.distance import dice
-import skimage
 import imageio
 import numpy as np
 import nibabel as nb
@@ -17,7 +16,9 @@ import pandas as pd
 import json
 import copy
 import argparse
-
+import shutil
+import subprocess
+import sys
 
 # load a single nifti file
 def loadnifti(t1_file,dir,type=None):
@@ -53,16 +54,18 @@ def recycle_dims(alist):
             yield item
 
 def main(datadir):
-
     niftidir = os.path.join(datadir,'dicom2nifti_upload')
     predictiondir = os.path.join(datadir,'nnUNet_predictions','flask')
-    resultsdir = os.path.join(predictiondir,'comp')
+    resultsdir = os.path.join(predictiondir,'results')
+    try:
+        shutil.rmtree(resultsdir)
+    except FileNotFoundError:
+        pass
+    os.makedirs(resultsdir,exist_ok=True)
 
     # hard-coded convention from nnunet_predict_preprocess
     olist = [(0,'ax'),(1,'sag'),(2,'cor')]
     orients = recycle_dims(olist)
-
-    os.makedirs(resultsdir,exist_ok=True)
 
     cases = sorted(set([re.search('(M|DSC)_?[0-9]*',f)[0] for f in os.listdir(niftidir)]))
 
@@ -140,10 +143,17 @@ def main(datadir):
                 output_fname = os.path.join(resultsdir,'pred_' + case + '_' + s + '_1_compOR.nii')
                 writenifti(pred_3d['compOR'],output_fname,affine=affine)
 
+        # copy all case nifti files to output directory as well for reference
+        for studydir in glob.glob(os.path.join(niftidir,case, '*')):
+            shutil.copytree(studydir, os.path.join(resultsdir,os.path.basename(studydir)))
+
     # create download zip file
     # currently not separated if multiple cases, just named for last case processed
-    command = 'zip -r -j ' + os.path.join(predictiondir,case+'_inference.zip') +  ' {}'.format(os.path.join(predictiondir,'comp','*'))
+    current_dir = os.getcwd()
+    os.chdir(resultsdir)
+    command = 'zip -r ' + os.path.join(predictiondir,case+'_inference.zip') + ' *'
     os.system(command)
+    os.chdir(current_dir)
     return
 
 
